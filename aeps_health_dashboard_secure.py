@@ -12,6 +12,11 @@ warnings.filterwarnings('ignore')
 # Google Cloud imports
 from google.oauth2 import service_account
 from google.cloud import bigquery
+import json
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Brand Plotly template and palette
 BRAND_COLORWAY = ['#E31E24', '#1F3C88', '#00A36C', '#FF6B00', '#0EA5E9', '#9333EA', '#6B7280']
@@ -57,8 +62,25 @@ def check_authentication():
         with col2:
             password = st.text_input("Enter Dashboard Password", type="password")
             if st.button("Login"):
-                # You can set this password or use environment variable
-                correct_password = os.getenv('DASHBOARD_PASSWORD', 'spicemoney2024')
+                # Get password from environment variable or Streamlit secrets
+                def get_auth_password():
+                    # First try environment variables
+                    env_password = os.getenv('DASHBOARD_PASSWORD')
+                    if env_password:
+                        return env_password
+                    
+                    # Then try Streamlit secrets
+                    try:
+                        if hasattr(st, 'secrets') and 'auth' in st.secrets:
+                            return st.secrets['auth'].get('DASHBOARD_PASSWORD', 'spicemoney2024')
+                        elif hasattr(st, 'secrets') and 'DASHBOARD_PASSWORD' in st.secrets:
+                            return st.secrets['DASHBOARD_PASSWORD']
+                    except Exception:
+                        pass
+                    
+                    return 'spicemoney2024'  # fallback default
+                
+                correct_password = get_auth_password()
                 if password == correct_password:
                     st.session_state.authenticated = True
                     st.rerun()
@@ -175,14 +197,8 @@ if st.sidebar.button("🔄 Refresh Data"):
 def get_bigquery_data(query_name, selected_date):
     """Fetch data from BigQuery for different health metrics"""
     
-    # Check if credentials file exists
-    credentials_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'spicemoney-dwh.json')
-    if not os.path.exists(credentials_path):
-        st.error(f"❌ BigQuery credentials file '{credentials_path}' not found!")
-        return None
-    
     try:
-        # Set up BigQuery connection
+        # Set up BigQuery connection using environment variables
         scope = [
             'https://spreadsheets.google.com/feeds',
             'https://www.googleapis.com/auth/drive',
@@ -191,14 +207,57 @@ def get_bigquery_data(query_name, selected_date):
             "https://www.googleapis.com/auth/bigquery"
         ]
         
-        credentials = service_account.Credentials.from_service_account_file(
-            credentials_path, 
+        # Create credentials from environment variables or Streamlit secrets
+        def get_credential_value(key, default=None):
+            """Get credential value from environment variables or Streamlit secrets"""
+            # First try environment variables
+            env_value = os.getenv(key)
+            if env_value:
+                return env_value
+            
+            # Then try Streamlit secrets
+            try:
+                if hasattr(st, 'secrets'):
+                    if key in st.secrets.get('google_credentials', {}):
+                        return st.secrets['google_credentials'][key]
+                    elif key in st.secrets:
+                        return st.secrets[key]
+            except Exception:
+                pass
+            
+            return default
+        
+        credentials_info = {
+            "type": get_credential_value('GOOGLE_CREDENTIALS_TYPE', 'service_account'),
+            "project_id": get_credential_value('GOOGLE_PROJECT_ID'),
+            "private_key_id": get_credential_value('GOOGLE_PRIVATE_KEY_ID'),
+            "private_key": get_credential_value('GOOGLE_PRIVATE_KEY', '').replace('\\n', '\n'),
+            "client_email": get_credential_value('GOOGLE_CLIENT_EMAIL'),
+            "client_id": get_credential_value('GOOGLE_CLIENT_ID'),
+            "auth_uri": get_credential_value('GOOGLE_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
+            "token_uri": get_credential_value('GOOGLE_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
+            "auth_provider_x509_cert_url": get_credential_value('GOOGLE_AUTH_PROVIDER_X509_CERT_URL', 'https://www.googleapis.com/oauth2/v1/certs'),
+            "client_x509_cert_url": get_credential_value('GOOGLE_CLIENT_X509_CERT_URL'),
+            "universe_domain": get_credential_value('GOOGLE_UNIVERSE_DOMAIN', 'googleapis.com')
+        }
+        
+        # Check if required credentials are available
+        required_fields = ['project_id', 'private_key', 'client_email']
+        missing_fields = [field for field in required_fields if not credentials_info.get(field)]
+        
+        if missing_fields:
+            st.error(f"❌ Missing required BigQuery credentials: {', '.join(missing_fields)}")
+            st.info("💡 Please check your .env file or Streamlit secrets configuration")
+            return None
+        
+        credentials = service_account.Credentials.from_service_account_info(
+            credentials_info, 
             scopes=scope
         )
         
         client = bigquery.Client(
             credentials=credentials, 
-            project=credentials.project_id
+            project=credentials_info['project_id']
         )
         
                 # Define queries based on query_name
@@ -1793,9 +1852,45 @@ elif page == "🏦 Bank-wise Health":
 
     # Fetch range data by formatting the query
     try:
-        credentials_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'spicemoney-dwh.json')
-        creds = service_account.Credentials.from_service_account_file(credentials_path, scopes=['https://www.googleapis.com/auth/bigquery'])
-        client_tmp = bigquery.Client(credentials=creds, project=creds.project_id)
+        # Create credentials from environment variables or Streamlit secrets for temporary client
+        def get_credential_value_temp(key, default=None):
+            """Get credential value from environment variables or Streamlit secrets"""
+            # First try environment variables
+            env_value = os.getenv(key)
+            if env_value:
+                return env_value
+            
+            # Then try Streamlit secrets
+            try:
+                if hasattr(st, 'secrets'):
+                    if key in st.secrets.get('google_credentials', {}):
+                        return st.secrets['google_credentials'][key]
+                    elif key in st.secrets:
+                        return st.secrets[key]
+            except Exception:
+                pass
+            
+            return default
+        
+        credentials_info = {
+            "type": get_credential_value_temp('GOOGLE_CREDENTIALS_TYPE', 'service_account'),
+            "project_id": get_credential_value_temp('GOOGLE_PROJECT_ID'),
+            "private_key_id": get_credential_value_temp('GOOGLE_PRIVATE_KEY_ID'),
+            "private_key": get_credential_value_temp('GOOGLE_PRIVATE_KEY', '').replace('\\n', '\n'),
+            "client_email": get_credential_value_temp('GOOGLE_CLIENT_EMAIL'),
+            "client_id": get_credential_value_temp('GOOGLE_CLIENT_ID'),
+            "auth_uri": get_credential_value_temp('GOOGLE_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
+            "token_uri": get_credential_value_temp('GOOGLE_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
+            "auth_provider_x509_cert_url": get_credential_value_temp('GOOGLE_AUTH_PROVIDER_X509_CERT_URL', 'https://www.googleapis.com/oauth2/v1/certs'),
+            "client_x509_cert_url": get_credential_value_temp('GOOGLE_CLIENT_X509_CERT_URL'),
+            "universe_domain": get_credential_value_temp('GOOGLE_UNIVERSE_DOMAIN', 'googleapis.com')
+        }
+        
+        creds = service_account.Credentials.from_service_account_info(
+            credentials_info, 
+            scopes=['https://www.googleapis.com/auth/bigquery']
+        )
+        client_tmp = bigquery.Client(credentials=creds, project=credentials_info['project_id'])
         bank_health_sql = """
         WITH date_range AS (
           SELECT DATE(@start_date) AS start_date, DATE(@end_date) AS end_date

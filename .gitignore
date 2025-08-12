@@ -68,3 +68,6 @@ logs/
 *.temp
 temp/
 tmp/
+ENVIRONMENT_SETUP.md
+secrets.toml.example
+.streamlit/config.toml

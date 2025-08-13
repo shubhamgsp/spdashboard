@@ -115,18 +115,115 @@ st.markdown("""
   .info-alert { background:#EFF6FF; color:#1E3A8A; padding:.65rem .85rem; border-radius:10px; border:1px solid #DBEAFE; }
   .stMetric > div > div { color: var(--text); }
   .stDownloadButton button, .stButton button { background: var(--primary)!important; color:#fff!important; border:none!important; border-radius:10px!important; box-shadow: 0 2px 8px rgba(227,30,36,0.2)!important; }
+  .help-button button { background: var(--secondary)!important; color:#fff!important; }
+  .logout-button button { background: #dc2626!important; color:#fff!important; }
   .stSelectbox, .stMultiSelect, .stNumberInput, .stDateInput, .stSlider { color: var(--text); }
   .stTabs [data-baseweb="tab"] { color: var(--secondary); }
 </style>
 """, unsafe_allow_html=True)
 
-# Logout button
-if st.sidebar.button("🚪 Logout"):
-    st.session_state.authenticated = False
-    st.rerun()
+# Help and Logout buttons
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    st.markdown('<div class="help-button">', unsafe_allow_html=True)
+    if st.button("ℹ️ Help", help="Click to view the user guide"):
+        st.session_state.show_help = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col2:
+    st.markdown('<div class="logout-button">', unsafe_allow_html=True)
+    if st.button("🚪 Logout", help="Click to logout from the dashboard"):
+        st.session_state.authenticated = False
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Title
 st.markdown('<h1 class="main-header">🏥 AEPS Health Dashboard</h1>', unsafe_allow_html=True)
+
+# Help Modal
+if st.session_state.get('show_help', False):
+    @st.dialog("📚 AEPS Health Dashboard - User Guide", width="large")
+    def show_user_guide():
+        try:
+            # Read the user guide content
+            import os
+            # Try different possible paths for the user guide
+            possible_paths = [
+                'USER_GUIDE.md',  # Same directory as the script
+                'aeps_health_project/USER_GUIDE.md',  # Relative from project root
+                os.path.join(os.path.dirname(__file__), 'USER_GUIDE.md'),  # Same directory as script file
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'USER_GUIDE.md')  # Absolute path same directory
+            ]
+            
+            user_guide_content = None
+            used_path = None
+            
+            for path in possible_paths:
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        user_guide_content = f.read()
+                        used_path = path
+                        break
+                except FileNotFoundError:
+                    continue
+            
+            if user_guide_content is None:
+                raise FileNotFoundError("USER_GUIDE.md not found in any expected location")
+            
+            # Add some intro text
+            st.info("💡 This guide will help you understand and effectively use the AEPS Health Dashboard. Scroll down to explore all features and best practices.")
+            
+            # Display the content with markdown in a scrollable container
+            st.markdown("""
+            <style>
+            .user-guide-content {
+                max-height: 70vh;
+                overflow-y: auto;
+                padding: 1rem;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                background-color: #ffffff;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Display the content with markdown
+            with st.container():
+                st.markdown(user_guide_content)
+            
+            # Close button
+            if st.button("✖️ Close Guide", key="close_guide", help="Close the user guide"):
+                st.session_state.show_help = False
+                st.rerun()
+                
+        except FileNotFoundError as e:
+            st.error("❌ User guide file not found. Please ensure USER_GUIDE.md exists in one of the expected locations.")
+            st.info("📁 Searched in these locations:")
+            # Show the paths that were tried
+            import os
+            possible_paths = [
+                'USER_GUIDE.md',
+                'aeps_health_project/USER_GUIDE.md',
+                os.path.join(os.path.dirname(__file__), 'USER_GUIDE.md'),
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'USER_GUIDE.md')
+            ]
+            for path in possible_paths:
+                st.text(f"• {path}")
+            
+            # Show current working directory
+            st.info(f"📂 Current working directory: `{os.getcwd()}`")
+            
+            if st.button("✖️ Close", key="close_error"):
+                st.session_state.show_help = False
+                st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error loading user guide: {str(e)}")
+            if st.button("✖️ Close", key="close_exception"):
+                st.session_state.show_help = False
+                st.rerun()
+    
+    show_user_guide()
 
 # Sidebar configuration
 st.sidebar.header("⚙️ Dashboard Settings")
